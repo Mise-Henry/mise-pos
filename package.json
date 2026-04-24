@@ -34,7 +34,9 @@
     "nodemailer": "^6.9.13",
     "stripe": "^15.7.0",
     "twilio": "^5.1.0",
-    "zod": "^3.23.0"
+    "zod": "^3.23.0",
+    "ts-node": "^10.9.2"
+
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
