@@ -16,7 +16,7 @@
 // ============================================================
 
 import type { FastifyInstance } from "fastify";
-import { authenticate, requireRole } from "../../middleware/auth.middleware";
+import { authenticate, requireRole } from "../middleware/auth.middleware";
 import { getDashboard } from "./dashboard.service";
 import {
   getSalesReport, getProductReport,

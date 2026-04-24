@@ -18,7 +18,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { authenticate, requireRole } from "../../middleware/auth.middleware";
+import { authenticate, requireRole } from "../middleware/auth.middleware";
 import {
   getOrganization, updateOrganization,
   getBranches, getBranchById, createBranch, updateBranch,

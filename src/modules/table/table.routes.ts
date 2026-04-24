@@ -33,7 +33,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { authenticate, requireRole, requirePermission } from "../../middleware/auth.middleware";
+import { authenticate, requireRole, requirePermission } from "../middleware/auth.middleware";
 import {
   getFloorPlan, getTables, getTableById,
   createTable, updateTable, deleteTable,
