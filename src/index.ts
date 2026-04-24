@@ -21,7 +21,7 @@ import { orgRoutes }          from "./modules/organization/organization.routes";
 import { integrationRoutes }  from "./modules/integration.routes";
 
 // ── Auth middleware plugin ────────────────────────────────────
-import authPlugin from "./middleware/auth.middleware";
+import { registerAuthMiddleware as authPlugin } from "./middleware/auth.middleware";
 
 const server = Fastify({
   logger: {
