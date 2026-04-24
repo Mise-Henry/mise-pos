@@ -13,6 +13,7 @@
     "declaration":                true,
     "sourceMap":                  true,
     "noUnusedLocals":             false,
+    "exactOptionalPropertyTypes": false,
     "noUnusedParameters":         false
   },
  "include": ["src/**/*"],
