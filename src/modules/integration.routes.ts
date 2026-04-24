@@ -33,7 +33,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, requireRole } from "../middleware/auth.middleware";
-import { chargeCard, refundCharge, GatewayError } from "../payment-gateway/gateway.service";
+import { chargeCard, refundCharge, GatewayError } from "./payment-gateway/gateway.service";
 import {
   normalizeYemeksepeti, normalizeGetir, normalizeTrendyol,
   verifyYemeksepeti, verifyGetir, verifyTrendyol,
