@@ -39,7 +39,7 @@
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { authenticate, requireRole, requirePermission } from "../middleware/auth.middleware";
+import { authenticate, requireRole, requirePermission } from "../../middleware/auth.middleware";
 import { verifyAccessToken } from "../../config/jwt.config";
 import { wsManager } from "../websocket/ws.manager";
 import {
