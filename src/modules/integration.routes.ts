@@ -32,19 +32,19 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { authenticate, requireRole } from "../middleware/auth.middleware";
+import { authenticate, requireRole } from "./middleware/auth.middleware";
 import { chargeCard, refundCharge, GatewayError } from "./payment-gateway/gateway.service";
 import {
   normalizeYemeksepeti, normalizeGetir, normalizeTrendyol,
   verifyYemeksepeti, verifyGetir, verifyTrendyol,
   createOrderFromDelivery, acceptDeliveryOrder, DeliveryError,
-} from "../delivery/delivery.service";
-import { submitFiscalReceipt, getFiscalDevices, createFiscalDevice, FiscalError } from "../fiscal/fiscal.service";
-import { sendSms, sendEmail, sendReceiptEmail, sendSmsReceipt, NotificationError } from "../notifications/notification.service";
+} from "./delivery/delivery.service";
+import { submitFiscalReceipt, getFiscalDevices, createFiscalDevice, FiscalError } from "./fiscal/fiscal.service";
+import { sendSms, sendEmail, sendReceiptEmail, sendSmsReceipt, NotificationError } from "./notifications/notification.service";
 import {
   registerWebhook, getWebhooks, deleteWebhook,
   dispatchWebhook, getWebhookDeliveries,
-} from "../webhooks/webhook.service";
+} from "./webhooks/webhook.service";
 
 // ── Schemas ───────────────────────────────────────────────────
 
