@@ -1,0 +1,755 @@
+// ============================================================
+//  MISE — Prisma Schema
+//  Database: PostgreSQL
+//  Generated for: Full restaurant POS system
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+//  ENUMS
+// ============================================================
+
+enum UserRole {
+  SUPER_ADMIN   // Platform owner — manages all branches
+  ADMIN         // Branch owner / manager
+  MANAGER       // Shift manager
+  WAITER        // Floor staff
+  CASHIER       // Payment handling
+  KITCHEN       // Kitchen staff (KDS view only)
+}
+
+enum OrderStatus {
+  DRAFT         // Being built by waiter
+  SENT          // Sent to kitchen
+  IN_PROGRESS   // Kitchen acknowledged
+  READY         // Kitchen marked ready
+  DELIVERED     // Delivered to table
+  CLOSED        // Paid and closed
+  CANCELLED     // Cancelled
+  VOID          // Voided after close (manager action)
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+  ONLINE
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+  ONLINE
+  VOUCHER
+  MIXED         // Split payment
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIAL
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLEANING
+  INACTIVE
+}
+
+enum ItemStatus {
+  PENDING       // Waiting to be sent to kitchen
+  SENT          // Sent to kitchen
+  IN_PROGRESS   // Being prepared
+  READY         // Ready to be served
+  SERVED        // Delivered to table
+  CANCELLED
+  VOID
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum InventoryUnit {
+  KG
+  GRAM
+  LITER
+  ML
+  PIECE
+  PORTION
+}
+
+enum StockMovementType {
+  PURCHASE      // Stock in from supplier
+  CONSUMPTION   // Used by an order
+  WASTE         // Spoilage / waste
+  ADJUSTMENT    // Manual correction
+  TRANSFER      // Between branches
+}
+
+enum FiscalStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+// ============================================================
+//  MULTI-BRANCH / ORGANIZATION
+// ============================================================
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  logoUrl     String?
+  address     String?
+  phone       String?
+  email       String?
+  taxId       String?  // For fiscal/tax compliance
+  currency    String   @default("TRY")
+  timezone    String   @default("Europe/Istanbul")
+  locale      String   @default("tr-TR")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branches    Branch[]
+  users       User[]
+  plans       SubscriptionPlan[]
+
+  @@map("organizations")
+}
+
+model Branch {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  address        String?
+  phone          String?
+  taxId          String?
+  isActive       Boolean  @default(true)
+  settings       Json     @default("{}")  // Branch-level overrides
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  users          User[]
+  tables         Table[]
+  sections       TableSection[]
+  orders         Order[]
+  menus          Menu[]
+  categories     Category[]
+  products       Product[]
+  shifts         Shift[]
+  stockItems     StockItem[]
+  stockMovements StockMovement[]
+  printers       Printer[]
+  fiscalDevices  FiscalDevice[]
+  receipts       Receipt[]
+
+  @@map("branches")
+}
+
+// ============================================================
+//  USERS & AUTH
+// ============================================================
+
+model User {
+  id             String    @id @default(cuid())
+  organizationId String
+  branchId       String?   // null = org-wide (SUPER_ADMIN / ADMIN)
+  email          String    @unique
+  phone          String?
+  passwordHash   String
+  firstName      String
+  lastName       String
+  role           UserRole
+  pin            String?   // 4-digit PIN for quick login on terminal
+  avatarUrl      String?
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  branch         Branch?        @relation(fields: [branchId], references: [id])
+  sessions       Session[]
+  orders         Order[]        @relation("CreatedBy")
+  ordersClosed   Order[]        @relation("ClosedBy")
+  shiftsOpened   Shift[]        @relation("OpenedBy")
+  shiftsClosed   Shift[]        @relation("ClosedBy")
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  device    String?  // "POS Terminal 1", "Waiter App - iPad"
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ============================================================
+//  TABLE MANAGEMENT
+// ============================================================
+
+model TableSection {
+  id        String  @id @default(cuid())
+  branchId  String
+  name      String  // "Main Hall", "Terrace", "Private Room"
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  branch    Branch  @relation(fields: [branchId], references: [id])
+  tables    Table[]
+
+  @@map("table_sections")
+}
+
+model Table {
+  id         String      @id @default(cuid())
+  branchId   String
+  sectionId  String?
+  name       String      // "T1", "Table 5", "Bar 2"
+  capacity   Int         @default(4)
+  posX       Float?      // Floor plan position X
+  posY       Float?      // Floor plan position Y
+  width      Float?      // Floor plan display size
+  height     Float?
+  shape      String      @default("rectangle") // "rectangle" | "circle"
+  status     TableStatus @default(AVAILABLE)
+  isActive   Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  branch     Branch         @relation(fields: [branchId], references: [id])
+  section    TableSection?  @relation(fields: [sectionId], references: [id])
+  orders     Order[]
+  reservations Reservation[]
+
+  @@map("tables")
+}
+
+model Reservation {
+  id          String   @id @default(cuid())
+  tableId     String
+  guestName   String
+  guestPhone  String?
+  guestCount  Int
+  reservedAt  DateTime
+  notes       String?
+  isConfirmed Boolean  @default(false)
+  isCancelled Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  table       Table    @relation(fields: [tableId], references: [id])
+
+  @@map("reservations")
+}
+
+// ============================================================
+//  MENU & PRODUCTS
+// ============================================================
+
+model Menu {
+  id          String    @id @default(cuid())
+  branchId    String
+  name        String    // "Lunch Menu", "All Day", "Happy Hour"
+  isDefault   Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  availableFrom String?   // Optional time-based availability
+  availableTo   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  branch      Branch    @relation(fields: [branchId], references: [id])
+  categories  Category[]
+
+  @@map("menus")
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  branchId    String
+  menuId      String?
+  parentId    String?   // For sub-categories
+  name        String
+  description String?
+  imageUrl    String?
+  color       String?   // HEX color for UI
+  icon        String?   // Icon name
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  branch      Branch     @relation(fields: [branchId], references: [id])
+  menu        Menu?      @relation(fields: [menuId], references: [id])
+  parent      Category?  @relation("SubCategories", fields: [parentId], references: [id])
+  children    Category[] @relation("SubCategories")
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id              String    @id @default(cuid())
+  branchId        String
+  categoryId      String
+  name            String
+  description     String?
+  imageUrl        String?
+  sku             String?
+  barcode         String?
+  price           Decimal   @db.Decimal(10, 2)
+  cost            Decimal?  @db.Decimal(10, 2)  // For margin calculation
+  taxRate         Decimal   @default(8) @db.Decimal(5, 2) // %8 default Turkey
+  isAvailable     Boolean   @default(true)
+  isActive        Boolean   @default(true)
+  sortOrder       Int       @default(0)
+  preparationTime Int?      // Minutes — for KDS countdown
+  kitchenNote     String?   // Default note sent to kitchen
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  branch          Branch          @relation(fields: [branchId], references: [id])
+  category        Category        @relation(fields: [categoryId], references: [id])
+  modifierGroups  ProductModifierGroup[]
+  orderItems      OrderItem[]
+  stockRecipe     StockRecipe[]   // Which ingredients this product uses
+  priceHistory    ProductPriceHistory[]
+
+  @@map("products")
+}
+
+model ModifierGroup {
+  id           String     @id @default(cuid())
+  name         String     // "Extras", "Cooking preference", "Size"
+  minSelect    Int        @default(0)
+  maxSelect    Int        @default(1)
+  isRequired   Boolean    @default(false)
+  isActive     Boolean    @default(true)
+
+  products     ProductModifierGroup[]
+  modifiers    Modifier[]
+
+  @@map("modifier_groups")
+}
+
+model ProductModifierGroup {
+  productId       String
+  modifierGroupId String
+  sortOrder       Int    @default(0)
+
+  product         Product       @relation(fields: [productId], references: [id])
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id])
+
+  @@id([productId, modifierGroupId])
+  @@map("product_modifier_groups")
+}
+
+model Modifier {
+  id              String        @id @default(cuid())
+  modifierGroupId String
+  name            String        // "Extra cheese", "Well done", "Large"
+  price           Decimal       @default(0) @db.Decimal(10, 2) // Additional price
+  isDefault       Boolean       @default(false)
+  isActive        Boolean       @default(true)
+  sortOrder       Int           @default(0)
+
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id])
+  orderItemModifiers OrderItemModifier[]
+
+  @@map("modifiers")
+}
+
+model ProductPriceHistory {
+  id          String   @id @default(cuid())
+  productId   String
+  oldPrice    Decimal  @db.Decimal(10, 2)
+  newPrice    Decimal  @db.Decimal(10, 2)
+  changedAt   DateTime @default(now())
+  changedBy   String   // userId
+
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@map("product_price_history")
+}
+
+// ============================================================
+//  ORDERS
+// ============================================================
+
+model Order {
+  id              String      @id @default(cuid())
+  branchId        String
+  tableId         String?
+  orderNumber     String      // Human-readable: "ORD-0042"
+  status          OrderStatus @default(DRAFT)
+  type            OrderType   @default(DINE_IN)
+  guestCount      Int         @default(1)
+  notes           String?
+  subtotal        Decimal     @db.Decimal(10, 2) @default(0)
+  taxAmount       Decimal     @db.Decimal(10, 2) @default(0)
+  discountAmount  Decimal     @db.Decimal(10, 2) @default(0)
+  total           Decimal     @db.Decimal(10, 2) @default(0)
+  createdById     String
+  closedById      String?
+  sentToKitchenAt DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Delivery fields
+  deliveryAddress String?
+  deliveryName    String?
+  deliveryPhone   String?
+
+  branch          Branch      @relation(fields: [branchId], references: [id])
+  table           Table?      @relation(fields: [tableId], references: [id])
+  createdBy       User        @relation("CreatedBy", fields: [createdById], references: [id])
+  closedBy        User?       @relation("ClosedBy", fields: [closedById], references: [id])
+  items           OrderItem[]
+  payments        Payment[]
+  discounts       OrderDiscount[]
+  receipt         Receipt?
+  fiscalRecord    FiscalRecord?
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String     @id @default(cuid())
+  orderId     String
+  productId   String
+  name        String     // Snapshot of product name at order time
+  price       Decimal    @db.Decimal(10, 2) // Snapshot of price
+  quantity    Int        @default(1)
+  taxRate     Decimal    @db.Decimal(5, 2)
+  notes       String?    // Waiter note for this item
+  status      ItemStatus @default(PENDING)
+  courseNumber Int       @default(1) // For multi-course ordering
+  sentAt      DateTime?
+  servedAt    DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  order       Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product    @relation(fields: [productId], references: [id])
+  modifiers   OrderItemModifier[]
+
+  @@map("order_items")
+}
+
+model OrderItemModifier {
+  id           String    @id @default(cuid())
+  orderItemId  String
+  modifierId   String
+  name         String    // Snapshot
+  price        Decimal   @db.Decimal(10, 2)
+
+  orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifier     Modifier  @relation(fields: [modifierId], references: [id])
+
+  @@map("order_item_modifiers")
+}
+
+model OrderDiscount {
+  id           String       @id @default(cuid())
+  orderId      String
+  name         String       // "Happy Hour", "Manager Discount"
+  type         DiscountType
+  value        Decimal      @db.Decimal(10, 2)
+  amount       Decimal      @db.Decimal(10, 2) // Calculated amount
+  appliedById  String       // userId who applied
+
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_discounts")
+}
+
+// ============================================================
+//  PAYMENTS
+// ============================================================
+
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  amount          Decimal       @db.Decimal(10, 2)
+  tendered        Decimal?      @db.Decimal(10, 2) // Cash given
+  change          Decimal?      @db.Decimal(10, 2) // Cash change
+  reference       String?       // Card/online transaction ref
+  processedAt     DateTime?
+  createdAt       DateTime      @default(now())
+
+  order           Order         @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
+}
+
+// ============================================================
+//  RECEIPTS & FISCAL
+// ============================================================
+
+model Receipt {
+  id          String   @id @default(cuid())
+  orderId     String   @unique
+  branchId    String
+  receiptNo   String   @unique
+  content     Json     // Full receipt data snapshot
+  printedAt   DateTime?
+  emailedTo   String?
+  createdAt   DateTime @default(now())
+
+  order       Order    @relation(fields: [orderId], references: [id])
+  branch      Branch   @relation(fields: [branchId], references: [id])
+
+  @@map("receipts")
+}
+
+model FiscalDevice {
+  id         String  @id @default(cuid())
+  branchId   String
+  name       String  // "Main Yazarkasa"
+  deviceType String  // "EPSON_TM", "INGENICO", etc.
+  serialNo   String
+  isActive   Boolean @default(true)
+
+  branch     Branch  @relation(fields: [branchId], references: [id])
+  records    FiscalRecord[]
+
+  @@map("fiscal_devices")
+}
+
+model FiscalRecord {
+  id           String       @id @default(cuid())
+  orderId      String       @unique
+  deviceId     String
+  status       FiscalStatus @default(PENDING)
+  zNumber      String?      // Fiscal Z-report number
+  receiptNo    String?      // Fiscal receipt number
+  submittedAt  DateTime?
+  response     Json?        // Raw device response
+  createdAt    DateTime     @default(now())
+
+  order        Order        @relation(fields: [orderId], references: [id])
+  device       FiscalDevice @relation(fields: [deviceId], references: [id])
+
+  @@map("fiscal_records")
+}
+
+// ============================================================
+//  SHIFTS
+// ============================================================
+
+model Shift {
+  id            String    @id @default(cuid())
+  branchId      String
+  openedById    String
+  closedById    String?
+  openedAt      DateTime  @default(now())
+  closedAt      DateTime?
+  openingFloat  Decimal   @db.Decimal(10, 2) @default(0) // Opening cash
+  closingCash   Decimal?  @db.Decimal(10, 2)
+  notes         String?
+  summary       Json?     // Snapshot of totals on close
+
+  branch        Branch    @relation(fields: [branchId], references: [id])
+  openedBy      User      @relation("OpenedBy", fields: [openedById], references: [id])
+  closedBy      User?     @relation("ClosedBy", fields: [closedById], references: [id])
+
+  @@map("shifts")
+}
+
+// ============================================================
+//  INVENTORY & STOCK
+// ============================================================
+
+model StockItem {
+  id           String        @id @default(cuid())
+  branchId     String
+  name         String        // "Tomato", "Mozzarella", "Olive Oil"
+  unit         InventoryUnit
+  currentQty   Decimal       @db.Decimal(10, 3) @default(0)
+  minQty       Decimal       @db.Decimal(10, 3) @default(0) // Low stock alert threshold
+  cost         Decimal?      @db.Decimal(10, 4) // Cost per unit
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  branch       Branch        @relation(fields: [branchId], references: [id])
+  movements    StockMovement[]
+  recipes      StockRecipe[]
+
+  @@map("stock_items")
+}
+
+model StockRecipe {
+  id          String    @id @default(cuid())
+  productId   String
+  stockItemId String
+  quantity    Decimal   @db.Decimal(10, 3) // How much stock used per 1 unit of product
+
+  product     Product   @relation(fields: [productId], references: [id])
+  stockItem   StockItem @relation(fields: [stockItemId], references: [id])
+
+  @@unique([productId, stockItemId])
+  @@map("stock_recipes")
+}
+
+model StockMovement {
+  id          String            @id @default(cuid())
+  branchId    String
+  stockItemId String
+  type        StockMovementType
+  quantity    Decimal           @db.Decimal(10, 3) // Positive = in, Negative = out
+  note        String?
+  orderId     String?           // If tied to a consumption
+  createdById String
+  createdAt   DateTime          @default(now())
+
+  branch      Branch            @relation(fields: [branchId], references: [id])
+  stockItem   StockItem         @relation(fields: [stockItemId], references: [id])
+
+  @@map("stock_movements")
+}
+
+// ============================================================
+//  DISCOUNTS & PROMOTIONS
+// ============================================================
+
+model DiscountTemplate {
+  id          String       @id @default(cuid())
+  branchId    String?      // null = org-wide
+  name        String
+  type        DiscountType
+  value       Decimal      @db.Decimal(10, 2)
+  code        String?      // Optional promo code
+  isActive    Boolean      @default(true)
+  startsAt    DateTime?
+  expiresAt   DateTime?
+  usageLimit  Int?
+  usageCount  Int          @default(0)
+  createdAt   DateTime     @default(now())
+
+  @@map("discount_templates")
+}
+
+// ============================================================
+//  LOYALTY
+// ============================================================
+
+model LoyaltyCustomer {
+  id          String   @id @default(cuid())
+  branchId    String?  // null = org-wide customer
+  name        String
+  phone       String   @unique
+  email       String?
+  points      Int      @default(0)
+  totalSpent  Decimal  @db.Decimal(10, 2) @default(0)
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transactions LoyaltyTransaction[]
+
+  @@map("loyalty_customers")
+}
+
+model LoyaltyTransaction {
+  id          String   @id @default(cuid())
+  customerId  String
+  orderId     String?
+  points      Int      // Positive = earned, Negative = redeemed
+  note        String?
+  createdAt   DateTime @default(now())
+
+  customer    LoyaltyCustomer @relation(fields: [customerId], references: [id])
+
+  @@map("loyalty_transactions")
+}
+
+// ============================================================
+//  PRINTERS
+// ============================================================
+
+model Printer {
+  id          String   @id @default(cuid())
+  branchId    String
+  name        String   // "Bar Printer", "Kitchen Printer 1"
+  type        String   // "RECEIPT" | "KITCHEN" | "LABEL"
+  connection  String   // "network" | "usb" | "bluetooth"
+  address     String   // IP or device path
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+
+  branch      Branch   @relation(fields: [branchId], references: [id])
+
+  @@map("printers")
+}
+
+// ============================================================
+//  SUBSCRIPTIONS (SaaS layer)
+// ============================================================
+
+model SubscriptionPlan {
+  id             String   @id @default(cuid())
+  organizationId String
+  planName       String   // "Starter", "Pro", "Enterprise"
+  maxBranches    Int      @default(1)
+  maxUsers       Int      @default(5)
+  features       Json     // Feature flags
+  startsAt       DateTime
+  expiresAt      DateTime?
+  isActive       Boolean  @default(true)
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("subscription_plans")
+}
+
+// ============================================================
+//  AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String   // "ORDER_VOIDED", "DISCOUNT_APPLIED", "PRICE_CHANGED"
+  entityType String   // "Order", "Product", "User"
+  entityId   String
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
