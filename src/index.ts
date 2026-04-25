@@ -7,7 +7,8 @@
 import Fastify from "fastify";
 import cors        from "@fastify/cors";
 import rateLimit   from "@fastify/rate-limit";
-import websocket   from "@fastify/websocket";
+import websocket  from "@fastify/websocket";
+import jwt from "@fastify/jwt";
 
 // ── Route modules ─────────────────────────────────────────────
 import { authRoutes }         from "./modules/auth/auth.routes";
@@ -45,6 +46,7 @@ async function bootstrap() {
   });
 
   await server.register(websocket);
+  await server.register(jwt, { secret: process.env.JWT_SECRET! });
   await server.register(authPlugin);
 
   // ── Health check ───────────────────────────────────────────
