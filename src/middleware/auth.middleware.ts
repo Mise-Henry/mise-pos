@@ -97,3 +97,23 @@ async function registerAuthMiddleware(fastify: FastifyInstance) {
   );
 }
 export default fp(registerAuthMiddleware);
+
+export async function authenticate(req: any, reply: any) {
+  return req.jwtVerify();
+}
+
+export function requireRole(...roles: string[]) {
+  return async function(req: any, reply: any) {
+    if (!roles.includes(req.user?.role)) {
+      return reply.code(403).send({ success: false, error: "Forbidden" });
+    }
+  };
+}
+
+export function requirePermission(...perms: string[]) {
+  return async function(req: any, reply: any) {
+    if (!perms.some(p => req.user?.permissions?.includes(p))) {
+      return reply.code(403).send({ success: false, error: "Forbidden" });
+    }
+  };
+}
