@@ -26,7 +26,9 @@ declare module "fastify" {
   }
 }
 
-export async function registerAuthMiddleware(fastify: FastifyInstance) {
+import fp from "fastify-plugin";
+
+async function registerAuthMiddleware(fastify: FastifyInstance) {
   // ── authenticate ────────────────────────────────────────────
   // Verifies JWT, attaches decoded payload to req.user
   // Also validates that the session still exists in DB
@@ -94,3 +96,4 @@ export async function registerAuthMiddleware(fastify: FastifyInstance) {
     }
   );
 }
+export default fp(registerAuthMiddleware);
